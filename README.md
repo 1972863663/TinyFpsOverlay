@@ -22,8 +22,7 @@ FPS --   CPU 3% 51°C   GPU 1% 31°C
 - 不可拖动，避免游戏中误移动；
 - `[` 显示悬浮条；
 - `]` 隐藏悬浮条；
-- 托盘菜单支持显示/隐藏、透明度、退出；
-- 托盘菜单支持开启/关闭开机自启动；
+- 托盘菜单只保留常用设置：热键、开机自启动、字体颜色、透明度滑块、退出；
 - FPS 由 `tools\PresentMon-2.5.1-x64.exe` 采集；
 - CPU/GPU 占用和 GPU 温度由 LibreHardwareMonitor 采集；
 - CPU 温度优先使用 AMD Ryzen Master Monitoring SDK，失败后回退到 LibreHardwareMonitor。
@@ -122,6 +121,23 @@ bin\Release\net8.0-windows\win-x64\publish\TinyFpsOverlay.exe
 ```
 
 当前保存内容包括窗口状态、透明度等。
+
+## 托盘菜单
+
+右键托盘图标后，当前只保留这些功能：
+
+```text
+热键：开启/关闭
+开机自启动：开启/关闭
+字体颜色...
+透明度滑块
+退出
+```
+
+透明度滑块方向：
+
+- 往左：更透明；
+- 往右：更不透明。
 
 ## 开机自启动
 

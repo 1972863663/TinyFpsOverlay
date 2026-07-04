@@ -104,17 +104,7 @@ public sealed class MainForm : Form
     private ContextMenuStrip BuildTrayMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("显示：[    隐藏：]", null, (_, _) => ToggleVisible());
-        menu.Items.Add("回到屏幕顶部居中", null, (_, _) => CenterTopAndSave());
-        menu.Items.Add("鼠标穿透：已锁定", null, (_, _) => ApplyClickThrough(true));
-        menu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
-        menu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
-        menu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
-        menu.Items.Add("不透明一点", null, (_, _) => AdjustOpacity(+0.08));
-        menu.Items.Add("透明一点", null, (_, _) => AdjustOpacity(-0.08));
-        menu.Items.Add("导出传感器列表", null, (_, _) => ExportSensors());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitApp());
+        BuildSimpleTrayMenu(menu);
         return menu;
     }
 
@@ -122,18 +112,74 @@ public sealed class MainForm : Form
     {
         _tray.ContextMenuStrip = null;
         _trayMenu.Items.Clear();
-        _trayMenu.Items.Add("显示：[    隐藏：]", null, (_, _) => ToggleVisible());
-        _trayMenu.Items.Add("回到屏幕顶部居中", null, (_, _) => CenterTopAndSave());
-        _trayMenu.Items.Add("鼠标穿透：已锁定", null, (_, _) => ApplyClickThrough(true));
-        _trayMenu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
-        _trayMenu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
-        _trayMenu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
-        _trayMenu.Items.Add("不透明一点", null, (_, _) => AdjustOpacity(+0.08));
-        _trayMenu.Items.Add("透明一点", null, (_, _) => AdjustOpacity(-0.08));
-        _trayMenu.Items.Add("导出传感器列表", null, (_, _) => ExportSensors());
-        _trayMenu.Items.Add(new ToolStripSeparator());
-        _trayMenu.Items.Add("退出", null, (_, _) => ExitApp());
+        BuildSimpleTrayMenu(_trayMenu);
         _tray.ContextMenuStrip = _trayMenu;
+    }
+
+    private void BuildSimpleTrayMenu(ContextMenuStrip menu)
+    {
+        menu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启  [显示  ]隐藏" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
+        menu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
+        menu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("透明度");
+        menu.Items.Add(CreateOpacitySliderMenuItem());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("退出", null, (_, _) => ExitApp());
+    }
+
+    private ToolStripControlHost CreateOpacitySliderMenuItem()
+    {
+        var panel = new Panel
+        {
+            Width = 230,
+            Height = 44,
+            Padding = new Padding(8, 0, 8, 0)
+        };
+
+        var leftLabel = new Label
+        {
+            Text = "透明",
+            AutoSize = true,
+            Location = new Point(6, 15)
+        };
+
+        var rightLabel = new Label
+        {
+            Text = "不透明",
+            AutoSize = true,
+            Location = new Point(180, 15)
+        };
+
+        var slider = new TrackBar
+        {
+            Minimum = 35,
+            Maximum = 100,
+            TickFrequency = 5,
+            SmallChange = 1,
+            LargeChange = 5,
+            Value = (int)Math.Round(Math.Clamp(_config.Opacity, 0.35, 1.0) * 100),
+            AutoSize = false,
+            Width = 140,
+            Height = 34,
+            Location = new Point(42, 5)
+        };
+
+        slider.Scroll += (_, _) => SetOpacity(slider.Value / 100.0);
+        slider.ValueChanged += (_, _) => SetOpacity(slider.Value / 100.0);
+
+        panel.Controls.Add(leftLabel);
+        panel.Controls.Add(slider);
+        panel.Controls.Add(rightLabel);
+
+        return new ToolStripControlHost(panel)
+        {
+            AutoSize = false,
+            Width = 240,
+            Height = 48,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -409,7 +455,12 @@ public sealed class MainForm : Form
 
     private void AdjustOpacity(double delta)
     {
-        _config.Opacity = Math.Clamp(_config.Opacity + delta, 0.35, 1.0);
+        SetOpacity(_config.Opacity + delta);
+    }
+
+    private void SetOpacity(double value)
+    {
+        _config.Opacity = Math.Clamp(value, 0.35, 1.0);
         Opacity = _config.Opacity;
         OverlayConfigStore.Save(_config);
     }
