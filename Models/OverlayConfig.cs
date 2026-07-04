@@ -10,6 +10,10 @@ public sealed class OverlayConfig
     public bool LockedClickThrough { get; set; } = true;
     public double Opacity { get; set; } = 1.0;
     public bool HotkeyEnabled { get; set; } = true;
+    public int ShowHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.OemOpenBrackets;
+    public int ShowHotkeyModifiers { get; set; } = 0;
+    public int HideHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.OemCloseBrackets;
+    public int HideHotkeyModifiers { get; set; } = 0;
     public bool AutoStartEnabled { get; set; } = false;
     public int TextColorArgb { get; set; } = unchecked((int)0xFFAAFF00); // 小飞机风格荧光绿
 }

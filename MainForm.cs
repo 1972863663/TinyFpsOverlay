@@ -14,8 +14,10 @@ public sealed class MainForm : Form
     private const int WmHotkey = 0x0312;
     private const int HotkeyIdShow = 1101;
     private const int HotkeyIdHide = 1102;
-    private const uint VkOpenBracket = 0xDB;
-    private const uint VkCloseBracket = 0xDD;
+    private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModWin = 0x0008;
 
     private readonly HardwareMonitorService _hardware = new();
     private readonly PresentMonFpsService _fps = new();
@@ -118,7 +120,7 @@ public sealed class MainForm : Form
 
     private void BuildSimpleTrayMenu(ContextMenuStrip menu)
     {
-        menu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启  [显示  ]隐藏" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
+        menu.Items.Add("设置热键..." + (_config.HotkeyEnabled ? $"  {FormatHotkey(_config.ShowHotkeyModifiers, _config.ShowHotkeyKey)}显示  {FormatHotkey(_config.HideHotkeyModifiers, _config.HideHotkeyKey)}隐藏" : "  已关闭"), null, (_, _) => OpenHotkeySettings());
         menu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
         menu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
         menu.Items.Add(new ToolStripSeparator());
@@ -357,7 +359,111 @@ public sealed class MainForm : Form
         ApplyHotkeyRegistration();
         OverlayConfigStore.Save(_config);
         RefreshTrayMenu();
-        _tray.ShowBalloonTip(1800, "TinyFpsOverlay", _config.HotkeyEnabled ? "热键已开启：[ 显示，] 隐藏" : "热键已关闭", ToolTipIcon.Info);
+        _tray.ShowBalloonTip(1800, "TinyFpsOverlay", _config.HotkeyEnabled ? $"热键已开启：{FormatHotkey(_config.ShowHotkeyModifiers, _config.ShowHotkeyKey)} 显示，{FormatHotkey(_config.HideHotkeyModifiers, _config.HideHotkeyKey)} 隐藏" : "热键已关闭", ToolTipIcon.Info);
+    }
+
+    private void OpenHotkeySettings()
+    {
+        bool enabled = _config.HotkeyEnabled;
+        int showKey = NormalizeHotkeyKey(_config.ShowHotkeyKey, (int)Keys.OemOpenBrackets);
+        int showModifiers = _config.ShowHotkeyModifiers;
+        int hideKey = NormalizeHotkeyKey(_config.HideHotkeyKey, (int)Keys.OemCloseBrackets);
+        int hideModifiers = _config.HideHotkeyModifiers;
+
+        using var dialog = new Form
+        {
+            Text = "设置热键",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterScreen,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(360, 210)
+        };
+
+        var enabledCheck = new CheckBox
+        {
+            Text = "开启热键",
+            Checked = enabled,
+            AutoSize = true,
+            Location = new Point(18, 18)
+        };
+
+        var showLabel = new Label { Text = "显示悬浮窗：", AutoSize = true, Location = new Point(18, 58) };
+        var showBox = new TextBox
+        {
+            ReadOnly = true,
+            TabStop = true,
+            Text = FormatHotkey(showModifiers, showKey),
+            Location = new Point(120, 54),
+            Width = 210
+        };
+
+        var hideLabel = new Label { Text = "隐藏悬浮窗：", AutoSize = true, Location = new Point(18, 94) };
+        var hideBox = new TextBox
+        {
+            ReadOnly = true,
+            TabStop = true,
+            Text = FormatHotkey(hideModifiers, hideKey),
+            Location = new Point(120, 90),
+            Width = 210
+        };
+
+        var tip = new Label
+        {
+            Text = "点击输入框后，直接按你想设置的热键。支持 Ctrl / Alt / Shift / Win + 按键。",
+            AutoSize = false,
+            Location = new Point(18, 128),
+            Size = new Size(320, 34)
+        };
+
+        var ok = new Button { Text = "确定", DialogResult = DialogResult.OK, Location = new Point(174, 170), Width = 75 };
+        var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Location = new Point(258, 170), Width = 75 };
+
+        showBox.KeyDown += (_, e) =>
+        {
+            if (TryCaptureHotkey(e, out int modifiers, out int key))
+            {
+                showModifiers = modifiers;
+                showKey = key;
+                showBox.Text = FormatHotkey(showModifiers, showKey);
+            }
+        };
+
+        hideBox.KeyDown += (_, e) =>
+        {
+            if (TryCaptureHotkey(e, out int modifiers, out int key))
+            {
+                hideModifiers = modifiers;
+                hideKey = key;
+                hideBox.Text = FormatHotkey(hideModifiers, hideKey);
+            }
+        };
+
+        dialog.Controls.AddRange(new Control[] { enabledCheck, showLabel, showBox, hideLabel, hideBox, tip, ok, cancel });
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (showKey == hideKey && showModifiers == hideModifiers)
+        {
+            _tray.ShowBalloonTip(3000, "TinyFpsOverlay", "显示和隐藏不能使用同一个热键。", ToolTipIcon.Warning);
+            return;
+        }
+
+        _config.HotkeyEnabled = enabledCheck.Checked;
+        _config.ShowHotkeyKey = showKey;
+        _config.ShowHotkeyModifiers = showModifiers;
+        _config.HideHotkeyKey = hideKey;
+        _config.HideHotkeyModifiers = hideModifiers;
+        ApplyHotkeyRegistration();
+        OverlayConfigStore.Save(_config);
+        RefreshTrayMenu();
+        _tray.ShowBalloonTip(2200, "TinyFpsOverlay", _config.HotkeyEnabled ? $"热键已保存：{FormatHotkey(showModifiers, showKey)} 显示，{FormatHotkey(hideModifiers, hideKey)} 隐藏" : "热键已关闭", ToolTipIcon.Info);
     }
 
     private void SyncStartupConfigWithRegistry()
@@ -425,10 +531,97 @@ public sealed class MainForm : Form
 
         if (_config.HotkeyEnabled)
         {
-            bool showOk = RegisterHotKey(Handle, HotkeyIdShow, 0, VkOpenBracket);
-            bool hideOk = RegisterHotKey(Handle, HotkeyIdHide, 0, VkCloseBracket);
+            int showKey = NormalizeHotkeyKey(_config.ShowHotkeyKey, (int)Keys.OemOpenBrackets);
+            int hideKey = NormalizeHotkeyKey(_config.HideHotkeyKey, (int)Keys.OemCloseBrackets);
+            bool showOk = RegisterHotKey(Handle, HotkeyIdShow, (uint)_config.ShowHotkeyModifiers, (uint)showKey);
+            bool hideOk = RegisterHotKey(Handle, HotkeyIdHide, (uint)_config.HideHotkeyModifiers, (uint)hideKey);
             _hotkeyRegistered = showOk || hideOk;
         }
+    }
+
+    private static int NormalizeHotkeyKey(int key, int fallback)
+    {
+        return key > 0 ? key : fallback;
+    }
+
+    private static bool TryCaptureHotkey(KeyEventArgs e, out int modifiers, out int key)
+    {
+        e.SuppressKeyPress = true;
+        e.Handled = true;
+
+        Keys keyCode = e.KeyCode;
+        if (keyCode is Keys.ControlKey or Keys.ShiftKey or Keys.Menu or Keys.LWin or Keys.RWin)
+        {
+            modifiers = 0;
+            key = 0;
+            return false;
+        }
+
+        modifiers = 0;
+        if (e.Control)
+        {
+            modifiers |= (int)ModControl;
+        }
+        if (e.Alt)
+        {
+            modifiers |= (int)ModAlt;
+        }
+        if (e.Shift)
+        {
+            modifiers |= (int)ModShift;
+        }
+        if ((Control.ModifierKeys & Keys.LWin) == Keys.LWin || (Control.ModifierKeys & Keys.RWin) == Keys.RWin)
+        {
+            modifiers |= (int)ModWin;
+        }
+
+        key = (int)keyCode;
+        return key > 0;
+    }
+
+    private static string FormatHotkey(int modifiers, int key)
+    {
+        var parts = new List<string>();
+        if ((modifiers & (int)ModControl) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+        if ((modifiers & (int)ModAlt) != 0)
+        {
+            parts.Add("Alt");
+        }
+        if ((modifiers & (int)ModShift) != 0)
+        {
+            parts.Add("Shift");
+        }
+        if ((modifiers & (int)ModWin) != 0)
+        {
+            parts.Add("Win");
+        }
+
+        parts.Add(FormatKeyName((Keys)NormalizeHotkeyKey(key, (int)Keys.None)));
+        return string.Join("+", parts);
+    }
+
+    private static string FormatKeyName(Keys key)
+    {
+        return key switch
+        {
+            Keys.OemOpenBrackets => "[",
+            Keys.OemCloseBrackets => "]",
+            Keys.Oemcomma => ",",
+            Keys.OemPeriod => ".",
+            Keys.OemMinus => "-",
+            Keys.Oemplus => "=",
+            Keys.OemQuestion => "/",
+            Keys.OemPipe => "\\",
+            Keys.OemSemicolon => ";",
+            Keys.OemQuotes => "'",
+            Keys.Oemtilde => "`",
+            Keys.Space => "Space",
+            Keys.Escape => "Esc",
+            _ => key.ToString()
+        };
     }
 
     private void PickTextColor()
