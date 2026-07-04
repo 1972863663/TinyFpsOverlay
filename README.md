@@ -23,6 +23,7 @@ FPS --   CPU 3% 51°C   GPU 1% 31°C
 - `[` 显示悬浮条；
 - `]` 隐藏悬浮条；
 - 托盘菜单支持显示/隐藏、透明度、退出；
+- 托盘菜单支持开启/关闭开机自启动；
 - FPS 由 `tools\PresentMon-2.5.1-x64.exe` 采集；
 - CPU/GPU 占用和 GPU 温度由 LibreHardwareMonitor 采集；
 - CPU 温度优先使用 AMD Ryzen Master Monitoring SDK，失败后回退到 LibreHardwareMonitor。
@@ -93,6 +94,18 @@ dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile
 bin\Release\net8.0-windows\win-x64\publish\TinyFpsOverlay.exe
 ```
 
+也可以直接运行项目根目录的脚本：
+
+```text
+打包到桌面.bat
+```
+
+它会重新 `clean/build/publish`，然后把完整发布目录复制到：
+
+```text
+%USERPROFILE%\Desktop\TinyFpsOverlay\TinyFpsOverlay.exe
+```
+
 说明：
 
 - 发布模式是 framework-dependent，需要目标机器安装 .NET 8 Desktop Runtime；
@@ -109,6 +122,28 @@ bin\Release\net8.0-windows\win-x64\publish\TinyFpsOverlay.exe
 ```
 
 当前保存内容包括窗口状态、透明度等。
+
+## 开机自启动
+
+托盘右键菜单里有：
+
+```text
+开机自启动：开启/关闭
+```
+
+实现方式是写入当前用户注册表启动项：
+
+```text
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run\TinyFpsOverlay
+```
+
+注意：如果你移动了 EXE，Windows 启动项里保存的旧路径会失效。新版程序启动时会做路径自修复：
+
+- 只要配置里仍然是开启自启动；
+- 或注册表里已经存在 `TinyFpsOverlay` 启动项；
+- 程序启动后都会把启动项更新成当前正在运行的 EXE 路径。
+
+所以移动位置后，手动打开一次新位置的 `TinyFpsOverlay.exe`，保持“开机自启动：开启”，它就会把启动项修正到新路径。
 
 ## 项目结构
 

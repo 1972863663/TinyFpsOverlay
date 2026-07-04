@@ -35,6 +35,7 @@ public sealed class MainForm : Form
     public MainForm()
     {
         _config = OverlayConfigStore.Load();
+        SyncStartupConfigWithRegistry();
         _cpuTemperature = new CpuTemperatureService(new ICpuTemperatureProvider[]
         {
             new AmdRyzenMasterTemperatureProvider(),
@@ -107,6 +108,7 @@ public sealed class MainForm : Form
         menu.Items.Add("回到屏幕顶部居中", null, (_, _) => CenterTopAndSave());
         menu.Items.Add("鼠标穿透：已锁定", null, (_, _) => ApplyClickThrough(true));
         menu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
+        menu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
         menu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
         menu.Items.Add("不透明一点", null, (_, _) => AdjustOpacity(+0.08));
         menu.Items.Add("透明一点", null, (_, _) => AdjustOpacity(-0.08));
@@ -124,6 +126,7 @@ public sealed class MainForm : Form
         _trayMenu.Items.Add("回到屏幕顶部居中", null, (_, _) => CenterTopAndSave());
         _trayMenu.Items.Add("鼠标穿透：已锁定", null, (_, _) => ApplyClickThrough(true));
         _trayMenu.Items.Add("热键：" + (_config.HotkeyEnabled ? "开启" : "关闭"), null, (_, _) => ToggleHotkeyEnabled());
+        _trayMenu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
         _trayMenu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
         _trayMenu.Items.Add("不透明一点", null, (_, _) => AdjustOpacity(+0.08));
         _trayMenu.Items.Add("透明一点", null, (_, _) => AdjustOpacity(-0.08));
@@ -309,6 +312,60 @@ public sealed class MainForm : Form
         OverlayConfigStore.Save(_config);
         RefreshTrayMenu();
         _tray.ShowBalloonTip(1800, "TinyFpsOverlay", _config.HotkeyEnabled ? "热键已开启：[ 显示，] 隐藏" : "热键已关闭", ToolTipIcon.Info);
+    }
+
+    private void SyncStartupConfigWithRegistry()
+    {
+        bool registryEnabled = StartupService.IsEnabled();
+        if (registryEnabled)
+        {
+            _config.AutoStartEnabled = true;
+        }
+
+        if (_config.AutoStartEnabled)
+        {
+            bool repaired = StartupService.EnableOrRepair();
+            if (!repaired)
+            {
+                _config.AutoStartEnabled = false;
+            }
+        }
+
+        OverlayConfigStore.Save(_config);
+    }
+
+    private void ToggleAutoStart()
+    {
+        if (_config.AutoStartEnabled)
+        {
+            bool disabled = StartupService.Disable();
+            if (disabled)
+            {
+                _config.AutoStartEnabled = false;
+                OverlayConfigStore.Save(_config);
+                RefreshTrayMenu();
+                _tray.ShowBalloonTip(2000, "TinyFpsOverlay", "开机自启动已关闭", ToolTipIcon.Info);
+            }
+            else
+            {
+                _tray.ShowBalloonTip(3000, "TinyFpsOverlay", "关闭开机自启动失败", ToolTipIcon.Error);
+            }
+
+            return;
+        }
+
+        bool enabled = StartupService.EnableOrRepair();
+        if (enabled)
+        {
+            _config.AutoStartEnabled = true;
+            OverlayConfigStore.Save(_config);
+            RefreshTrayMenu();
+            _tray.ShowBalloonTip(3000, "TinyFpsOverlay", "开机自启动已开启，并已绑定到当前 EXE 路径。以后移动程序后，重新打开一次并保持开启即可自动修正启动路径。", ToolTipIcon.Info);
+        }
+        else
+        {
+            _tray.ShowBalloonTip(3000, "TinyFpsOverlay", "开启开机自启动失败", ToolTipIcon.Error);
+        }
     }
 
     private void ApplyHotkeyRegistration()
