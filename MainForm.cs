@@ -27,6 +27,7 @@ public sealed class MainForm : Form
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _trayMenu;
     private readonly Label _line = new();
+    private readonly Icon _appIcon;
 
     private bool _reallyExit;
     private bool _dragging;
@@ -60,10 +61,11 @@ public sealed class MainForm : Form
         PositionTopCenterIfNeeded();
 
         _trayMenu = BuildTrayMenu();
+        _appIcon = LoadAppIcon();
         _tray = new NotifyIcon
         {
             Text = "TinyFpsOverlay",
-            Icon = SystemIcons.Application,
+            Icon = _appIcon,
             Visible = true,
             ContextMenuStrip = _trayMenu
         };
@@ -108,6 +110,37 @@ public sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         BuildSimpleTrayMenu(menu);
         return menu;
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            Icon? icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (icon is not null)
+            {
+                return icon;
+            }
+        }
+        catch
+        {
+            // ignored, fallback below
+        }
+
+        try
+        {
+            string localIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "app-icon.ico");
+            if (File.Exists(localIcon))
+            {
+                return new Icon(localIcon);
+            }
+        }
+        catch
+        {
+            // ignored, fallback below
+        }
+
+        return (Icon)SystemIcons.Application.Clone();
     }
 
     private void RefreshTrayMenu()
@@ -716,6 +749,7 @@ public sealed class MainForm : Form
         _tray.Visible = false;
         _tray.Dispose();
         _trayMenu.Dispose();
+        _appIcon.Dispose();
         _fps.Dispose();
         _hardware.Dispose();
         OverlayConfigStore.Save(_config);
@@ -735,6 +769,7 @@ public sealed class MainForm : Form
             _timer.Dispose();
             _tray.Dispose();
             _trayMenu.Dispose();
+            _appIcon.Dispose();
             _fps.Dispose();
             _hardware.Dispose();
         }
