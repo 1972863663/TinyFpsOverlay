@@ -1,0 +1,22 @@
+﻿# Build output
+bin/
+obj/
+.vs/
+
+# User/local IDE state
+*.user
+*.suo
+.vscode/
+
+# Logs/temp
+*.log
+*.tmp
+
+# Local verification screenshots, not source assets
+verify-*.png
+desktop*.png
+
+# Local AMD SDK / downloaded installers if copied during testing
+_downloads/
+AMD*/
+RyzenMasterMonitoringSDK*/
