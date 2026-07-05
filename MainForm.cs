@@ -11,7 +11,11 @@ public sealed class MainForm : Form
     private const int GwlExStyle = -20;
     private const int WsExTransparent = 0x00000020;
     private const int WsExToolWindow = 0x00000080;
+    private const int WsExLayered = 0x00080000;
+    private const int WsExNoActivate = 0x08000000;
+    private const int WmNcHitTest = 0x0084;
     private const int WmHotkey = 0x0312;
+    private const int HtTransparent = -1;
     private const int HotkeyIdShow = 1101;
     private const int HotkeyIdHide = 1102;
     private const uint ModAlt = 0x0001;
@@ -325,10 +329,10 @@ public sealed class MainForm : Form
     {
         _config.LockedClickThrough = enabled;
         int exStyle = GetWindowLong(Handle, GwlExStyle);
-        exStyle |= WsExToolWindow;
+        exStyle |= WsExToolWindow | WsExNoActivate;
         if (enabled)
         {
-            exStyle |= WsExTransparent;
+            exStyle |= WsExTransparent | WsExLayered;
         }
         else
         {
@@ -654,6 +658,12 @@ public sealed class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == WmNcHitTest)
+        {
+            m.Result = new IntPtr(HtTransparent);
+            return;
+        }
+
         if (m.Msg == WmHotkey)
         {
             int id = m.WParam.ToInt32();
