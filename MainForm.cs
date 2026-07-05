@@ -30,8 +30,6 @@ public sealed class MainForm : Form
     private readonly Icon _appIcon;
 
     private bool _reallyExit;
-    private bool _dragging;
-    private Point _dragStart;
     private bool _hotkeyRegistered;
     private double? _latestLibreHardwareCpuTemperature;
 
@@ -290,45 +288,6 @@ public sealed class MainForm : Form
         SavePosition();
     }
 
-    private void Overlay_MouseDown(object? sender, MouseEventArgs e)
-    {
-        if (_config.LockedClickThrough)
-        {
-            return;
-        }
-
-        if (e.Button == MouseButtons.Right)
-        {
-            ToggleClickThrough();
-            return;
-        }
-
-        if (e.Button == MouseButtons.Left)
-        {
-            _dragging = true;
-            _dragStart = e.Location;
-            Cursor = Cursors.SizeAll;
-        }
-    }
-
-    private void Overlay_MouseMove(object? sender, MouseEventArgs e)
-    {
-        if (!_dragging)
-        {
-            return;
-        }
-
-        Point screenPoint = PointToScreen(e.Location);
-        Location = new Point(screenPoint.X - _dragStart.X, screenPoint.Y - _dragStart.Y);
-    }
-
-    private void Overlay_MouseUp(object? sender, MouseEventArgs e)
-    {
-        _dragging = false;
-        Cursor = Cursors.Default;
-        SavePosition();
-    }
-
     private void ExportSensors()
     {
         try
@@ -360,11 +319,6 @@ public sealed class MainForm : Form
             TopMost = false;
             TopMost = true;
         }
-    }
-
-    private void ToggleClickThrough()
-    {
-        ApplyClickThrough(!_config.LockedClickThrough);
     }
 
     private void ApplyClickThrough(bool enabled)
