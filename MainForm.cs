@@ -14,10 +14,19 @@ public sealed class MainForm : Form
     private const int WsExLayered = 0x00080000;
     private const int WsExNoActivate = 0x08000000;
     private const int WmNcHitTest = 0x0084;
+    private const int WmMouseActivate = 0x0021;
     private const int WmHotkey = 0x0312;
     private const int HtTransparent = -1;
+    private const int MaNoActivateAndEat = 4;
     private const int HotkeyIdShow = 1101;
     private const int HotkeyIdHide = 1102;
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpShowWindow = 0x0040;
+    private const uint SwpFrameChanged = 0x0020;
+    private const uint LwaAlpha = 0x00000002;
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
@@ -36,6 +45,18 @@ public sealed class MainForm : Form
     private bool _reallyExit;
     private bool _hotkeyRegistered;
     private double? _latestLibreHardwareCpuTemperature;
+
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ExStyle |= WsExToolWindow | WsExNoActivate;
+            return cp;
+        }
+    }
 
     public MainForm()
     {
@@ -82,6 +103,7 @@ public sealed class MainForm : Form
         Shown += (_, _) =>
         {
             ApplyClickThrough(true);
+            KeepOverlayTopMostNoActivate();
             ApplyHotkeyRegistration();
             UpdateMetrics();
         };
@@ -253,6 +275,7 @@ public sealed class MainForm : Form
 
         _line.Text = $"FPS {fps}   CPU {cpuUsage} {cpuTemp}   GPU {gpuUsage} {gpuTemp}";
         ResizeToTextAndTopCenter();
+        ForceOverlayRepaint();
         _tray.Text = TruncateTrayText($"TinyFpsOverlay | {_line.Text}");
     }
 
@@ -272,6 +295,7 @@ public sealed class MainForm : Form
             _line.Bounds = new Rectangle(4, 0, ClientSize.Width - 8, ClientSize.Height);
         }
         CenterTopAndSave();
+        KeepOverlayTopMostNoActivate();
     }
     private void PositionTopCenterIfNeeded()
     {
@@ -289,6 +313,7 @@ public sealed class MainForm : Form
         Rectangle wa = Screen.PrimaryScreen?.WorkingArea ?? Screen.GetWorkingArea(this);
         Left = wa.Left + (wa.Width - Width) / 2;
         Top = wa.Top;
+        KeepOverlayTopMostNoActivate();
         SavePosition();
     }
 
@@ -320,8 +345,7 @@ public sealed class MainForm : Form
         else
         {
             Show();
-            TopMost = false;
-            TopMost = true;
+            KeepOverlayTopMostNoActivate();
         }
     }
 
@@ -340,6 +364,8 @@ public sealed class MainForm : Form
         }
 
         _ = SetWindowLong(Handle, GwlExStyle, exStyle);
+        ApplyLayeredAlpha();
+        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow | SwpFrameChanged);
         Invalidate();
         OverlayConfigStore.Save(_config);
     }
@@ -646,6 +672,7 @@ public sealed class MainForm : Form
     {
         _config.Opacity = Math.Clamp(value, 0.35, 1.0);
         Opacity = _config.Opacity;
+        ApplyLayeredAlpha();
         OverlayConfigStore.Save(_config);
     }
 
@@ -658,6 +685,12 @@ public sealed class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == WmMouseActivate)
+        {
+            m.Result = new IntPtr(MaNoActivateAndEat);
+            return;
+        }
+
         if (m.Msg == WmNcHitTest)
         {
             m.Result = new IntPtr(HtTransparent);
@@ -673,8 +706,7 @@ public sealed class MainForm : Form
                 {
                     Show();
                 }
-                TopMost = false;
-                TopMost = true;
+                KeepOverlayTopMostNoActivate();
                 return;
             }
 
@@ -689,6 +721,39 @@ public sealed class MainForm : Form
         }
 
         base.WndProc(ref m);
+    }
+
+    private void KeepOverlayTopMostNoActivate()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow);
+    }
+
+    private void ForceOverlayRepaint()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        ApplyLayeredAlpha();
+        Invalidate(true);
+        Update();
+    }
+
+    private void ApplyLayeredAlpha()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        byte alpha = (byte)Math.Clamp((int)Math.Round(Math.Clamp(_config.Opacity, 0.35, 1.0) * 255), 89, 255);
+        _ = SetLayeredWindowAttributes(Handle, 0, alpha, LwaAlpha);
     }
 
     private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -746,6 +811,12 @@ public sealed class MainForm : Form
 
     [DllImport("user32.dll")]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
