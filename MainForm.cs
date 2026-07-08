@@ -365,7 +365,7 @@ public sealed class MainForm : Form
 
         _ = SetWindowLong(Handle, GwlExStyle, exStyle);
         ApplyLayeredAlpha();
-        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow | SwpFrameChanged);
+        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged);
         Invalidate();
         OverlayConfigStore.Save(_config);
     }
@@ -725,12 +725,12 @@ public sealed class MainForm : Form
 
     private void KeepOverlayTopMostNoActivate()
     {
-        if (!IsHandleCreated)
+        if (!IsHandleCreated || !Visible)
         {
             return;
         }
 
-        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow);
+        _ = SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
     private void ForceOverlayRepaint()
