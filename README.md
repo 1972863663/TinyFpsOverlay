@@ -79,6 +79,15 @@ dotnet run -c Release
 运行_管理员.bat
 ```
 
+工具箱集成模式：
+
+```powershell
+TinyFpsOverlay.exe --toolbox-managed
+```
+
+该模式保留悬浮条和热键，但不显示 TinyFpsOverlay 托盘图标，也不会自行修改开机启动项；
+热键、开机启动、字体和透明度由 Windows 实用工具箱统一管理。`--no-tray` 是同义参数。
+
 ## 打包 / 发布 EXE
 
 推荐发布命令：
