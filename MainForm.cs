@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using TinyFpsOverlay.Models;
 using TinyFpsOverlay.Services;
@@ -26,7 +26,14 @@ public sealed class MainForm : Form
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
     private const uint SwpFrameChanged = 0x0020;
+    private const uint LwaColorKey = 0x00000001;
     private const uint LwaAlpha = 0x00000002;
+    private const float BaseFontSize = 11.0f;
+    private static readonly Color OverlayTransparentBackColor = Color.FromArgb(1, 2, 3);
+    private static readonly Color RtssCpuColor = Color.FromArgb(28, 168, 238);
+    private static readonly Color RtssGpuColor = Color.FromArgb(38, 210, 76);
+    private static readonly Color RtssFpsColor = Color.FromArgb(245, 245, 245);
+    private static readonly Color RtssValueColor = Color.FromArgb(255, 148, 31);
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
@@ -39,7 +46,7 @@ public sealed class MainForm : Form
     private readonly OverlayConfig _config;
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _trayMenu;
-    private readonly Label _line = new();
+    private readonly WeightedOverlayLabel _line = new();
     private readonly Icon _appIcon;
 
     private bool _reallyExit;
@@ -58,10 +65,13 @@ public sealed class MainForm : Form
         }
     }
 
-    public MainForm()
+    public MainForm(bool toolboxManaged = false)
     {
         _config = OverlayConfigStore.Load();
-        SyncStartupConfigWithRegistry();
+        if (!toolboxManaged)
+        {
+            SyncStartupConfigWithRegistry();
+        }
         _cpuTemperature = new CpuTemperatureService(new ICpuTemperatureProvider[]
         {
             new AmdRyzenMasterTemperatureProvider(),
@@ -75,12 +85,15 @@ public sealed class MainForm : Form
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
         ClientSize = new Size(360, 22);
-        BackColor = Color.Black;
+        BackColor = OverlayTransparentBackColor;
+        TransparencyKey = OverlayTransparentBackColor;
         Opacity = Math.Clamp(_config.Opacity, 0.35, 1.0);
         DoubleBuffered = true;
 
         BuildHorizontalOverlay();
         ApplyTextColor();
+        ApplyTextScale();
+        ApplyTextWeight();
         PositionTopCenterIfNeeded();
 
         _trayMenu = BuildTrayMenu();
@@ -89,7 +102,7 @@ public sealed class MainForm : Form
         {
             Text = "TinyFpsOverlay",
             Icon = _appIcon,
-            Visible = true,
+            Visible = !toolboxManaged,
             ContextMenuStrip = _trayMenu
         };
         _tray.DoubleClick += (_, _) => ToggleVisible();
@@ -113,8 +126,12 @@ public sealed class MainForm : Form
     {
         _line.Text = "FPS --   CPU --% --°C   GPU --% --°C";
         _line.Bounds = new Rectangle(4, 0, ClientSize.Width - 8, 20);
-        _line.Font = new Font("Consolas", 11.0f, FontStyle.Bold, GraphicsUnit.Point);
+        _line.Font = CreateOverlayFont();
         _line.ForeColor = Color.FromArgb(_config.TextColorArgb);
+        _line.CpuColor = RtssCpuColor;
+        _line.GpuColor = RtssGpuColor;
+        _line.FpsColor = RtssFpsColor;
+        _line.ValueColor = RtssValueColor;
         _line.BackColor = Color.Transparent;
         _line.TextAlign = ContentAlignment.MiddleCenter;
         _line.UseMnemonic = false;
@@ -181,10 +198,124 @@ public sealed class MainForm : Form
         menu.Items.Add("开机自启动：" + (_config.AutoStartEnabled ? "开启" : "关闭"), null, (_, _) => ToggleAutoStart());
         menu.Items.Add("字体颜色...", null, (_, _) => PickTextColor());
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("字体大小");
+        menu.Items.Add(CreateTextScaleSliderMenuItem());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("字体粗细");
+        menu.Items.Add(CreateTextWeightSliderMenuItem());
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("透明度");
         menu.Items.Add(CreateOpacitySliderMenuItem());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitApp());
+    }
+
+    private ToolStripControlHost CreateTextScaleSliderMenuItem()
+    {
+        var panel = new Panel
+        {
+            Width = 250,
+            Height = 44,
+            Padding = new Padding(8, 0, 8, 0)
+        };
+
+        var leftLabel = new Label
+        {
+            Text = "小",
+            AutoSize = true,
+            Location = new Point(10, 15)
+        };
+
+        var rightLabel = new Label
+        {
+            Text = "大",
+            AutoSize = true,
+            Location = new Point(216, 15)
+        };
+
+        var slider = new TrackBar
+        {
+            Minimum = 80,
+            Maximum = 180,
+            TickFrequency = 10,
+            SmallChange = 5,
+            LargeChange = 10,
+            Value = Math.Clamp(_config.TextScale, 80, 180),
+            AutoSize = false,
+            Width = 180,
+            Height = 34,
+            Location = new Point(32, 5)
+        };
+
+        slider.Scroll += (_, _) => SetTextScale(slider.Value);
+        slider.ValueChanged += (_, _) => SetTextScale(slider.Value);
+
+        panel.Controls.Add(leftLabel);
+        panel.Controls.Add(slider);
+        panel.Controls.Add(rightLabel);
+
+        return new ToolStripControlHost(panel)
+        {
+            AutoSize = false,
+            Width = 260,
+            Height = 48,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+    }
+
+    private ToolStripControlHost CreateTextWeightSliderMenuItem()
+    {
+        var panel = new Panel
+        {
+            Width = 230,
+            Height = 44,
+            Padding = new Padding(8, 0, 8, 0)
+        };
+
+        var leftLabel = new Label
+        {
+            Text = "细",
+            AutoSize = true,
+            Location = new Point(12, 15)
+        };
+
+        var rightLabel = new Label
+        {
+            Text = "粗",
+            AutoSize = true,
+            Location = new Point(196, 15)
+        };
+
+        var slider = new TrackBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            SmallChange = 5,
+            LargeChange = 10,
+            Value = Math.Clamp(_config.TextWeight, 0, 100),
+            AutoSize = false,
+            Width = 160,
+            Height = 34,
+            Location = new Point(34, 5)
+        };
+
+        slider.Scroll += (_, _) => SetTextWeight(slider.Value);
+        slider.ValueChanged += (_, _) => SetTextWeight(slider.Value);
+
+        panel.Controls.Add(leftLabel);
+        panel.Controls.Add(slider);
+        panel.Controls.Add(rightLabel);
+
+        return new ToolStripControlHost(panel)
+        {
+            AutoSize = false,
+            Width = 240,
+            Height = 48,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
     }
 
     private ToolStripControlHost CreateOpacitySliderMenuItem()
@@ -287,8 +418,10 @@ public sealed class MainForm : Form
     private void ResizeToTextAndTopCenter()
     {
         Size textSize = TextRenderer.MeasureText(_line.Text, _line.Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
-        int newWidth = Math.Max(260, textSize.Width + 18);
-        int newHeight = Math.Max(20, textSize.Height + 2);
+        int weightPadding = _line.WeightPadding;
+        int scalePadding = GetScalePadding();
+        int newWidth = Math.Max(260, textSize.Width + 18 + weightPadding * 2 + scalePadding * 2);
+        int newHeight = Math.Max(20, textSize.Height + 2 + weightPadding * 2 + scalePadding);
         if (ClientSize.Width != newWidth || ClientSize.Height != newHeight)
         {
             ClientSize = new Size(newWidth, newHeight);
@@ -663,6 +796,55 @@ public sealed class MainForm : Form
         _line.ForeColor = Color.FromArgb(_config.TextColorArgb);
     }
 
+    private Font CreateOverlayFont()
+    {
+        int scale = Math.Clamp(_config.TextScale, 80, 180);
+        float size = BaseFontSize * scale / 100.0f;
+        return new Font("Consolas", size, FontStyle.Regular, GraphicsUnit.Point);
+    }
+
+    private int GetScalePadding()
+    {
+        int scale = Math.Clamp(_config.TextScale, 80, 180);
+        return Math.Max(0, (int)Math.Ceiling((scale - 100) / 25.0));
+    }
+
+    private void ApplyTextScale()
+    {
+        _config.TextScale = Math.Clamp(_config.TextScale, 80, 180);
+        Font oldFont = _line.Font;
+        _line.Font = CreateOverlayFont();
+        if (!ReferenceEquals(oldFont, _line.Font))
+        {
+            oldFont.Dispose();
+        }
+        ResizeToTextAndTopCenter();
+    }
+
+    private void SetTextScale(int value)
+    {
+        _config.TextScale = Math.Clamp(value, 80, 180);
+        ApplyTextScale();
+        ForceOverlayRepaint();
+        OverlayConfigStore.Save(_config);
+    }
+
+    private void ApplyTextWeight()
+    {
+        _config.TextWeight = Math.Clamp(_config.TextWeight, 0, 100);
+        _line.TextWeight = _config.TextWeight;
+        _line.Invalidate();
+        ResizeToTextAndTopCenter();
+    }
+
+    private void SetTextWeight(int value)
+    {
+        _config.TextWeight = Math.Clamp(value, 0, 100);
+        ApplyTextWeight();
+        ForceOverlayRepaint();
+        OverlayConfigStore.Save(_config);
+    }
+
     private void AdjustOpacity(double delta)
     {
         SetOpacity(_config.Opacity + delta);
@@ -753,7 +935,8 @@ public sealed class MainForm : Form
         }
 
         byte alpha = (byte)Math.Clamp((int)Math.Round(Math.Clamp(_config.Opacity, 0.35, 1.0) * 255), 89, 255);
-        _ = SetLayeredWindowAttributes(Handle, 0, alpha, LwaAlpha);
+        uint transparentColorKey = unchecked((uint)ColorTranslator.ToWin32(OverlayTransparentBackColor));
+        _ = SetLayeredWindowAttributes(Handle, transparentColorKey, alpha, LwaColorKey | LwaAlpha);
     }
 
     private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -823,6 +1006,186 @@ public sealed class MainForm : Form
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+}
+
+internal sealed class WeightedOverlayLabel : Label
+{
+    private static readonly Color OutlineColor = Color.FromArgb(12, 18, 24);
+
+    public int TextWeight { get; set; }
+    public Color CpuColor { get; set; } = Color.FromArgb(28, 168, 238);
+    public Color GpuColor { get; set; } = Color.FromArgb(38, 210, 76);
+    public Color FpsColor { get; set; } = Color.White;
+    public Color ValueColor { get; set; } = Color.FromArgb(255, 148, 31);
+
+    public int WeightPadding => TextWeight switch
+    {
+        >= 80 => 2,
+        >= 35 => 1,
+        _ => 0
+    };
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        if (string.IsNullOrEmpty(Text))
+        {
+            return;
+        }
+
+        var flags = TextFormatFlags.NoPadding
+            | TextFormatFlags.SingleLine
+            | TextFormatFlags.VerticalCenter
+            | TextFormatFlags.NoPrefix;
+
+        IReadOnlyList<OverlayTextSegment> segments = BuildSegments(Text);
+        int totalWidth = MeasureSegments(segments, flags);
+        int startX = ClientRectangle.Left + Math.Max(0, (ClientRectangle.Width - totalWidth) / 2);
+        int startY = ClientRectangle.Top;
+
+        foreach (Point weightOffset in GetWeightOffsets())
+        {
+            DrawSegments(e.Graphics, segments, startX + weightOffset.X, startY + weightOffset.Y, OutlineColor, flags, outline: true);
+        }
+
+        foreach (Point weightOffset in GetWeightOffsets())
+        {
+            DrawSegments(e.Graphics, segments, startX + weightOffset.X, startY + weightOffset.Y, null, flags, outline: false);
+        }
+    }
+
+    private void DrawSegments(Graphics graphics, IReadOnlyList<OverlayTextSegment> segments, int startX, int startY, Color? overrideColor, TextFormatFlags flags, bool outline)
+    {
+        int x = startX;
+        foreach (OverlayTextSegment segment in segments)
+        {
+            int width = MeasureToken(segment.Text, flags);
+            if (width <= 0)
+            {
+                continue;
+            }
+
+            Color color = overrideColor ?? segment.Color;
+            if (outline)
+            {
+                foreach (Point outlineOffset in OutlineOffsets())
+                {
+                    var outlineBounds = new Rectangle(
+                        x + outlineOffset.X,
+                        startY + outlineOffset.Y,
+                        width + 2,
+                        ClientRectangle.Height);
+                    TextRenderer.DrawText(graphics, segment.Text, Font, outlineBounds, color, flags);
+                }
+            }
+            else
+            {
+                var bounds = new Rectangle(x, startY, width + 2, ClientRectangle.Height);
+                TextRenderer.DrawText(graphics, segment.Text, Font, bounds, color, flags);
+            }
+
+            x += width;
+        }
+    }
+
+    private int MeasureSegments(IReadOnlyList<OverlayTextSegment> segments, TextFormatFlags flags)
+    {
+        int width = 0;
+        foreach (OverlayTextSegment segment in segments)
+        {
+            width += MeasureToken(segment.Text, flags);
+        }
+
+        return width;
+    }
+
+    private int MeasureToken(string token, TextFormatFlags flags)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            return 0;
+        }
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return Math.Max(4, token.Length * 6);
+        }
+
+        return TextRenderer.MeasureText(token, Font, Size.Empty, flags).Width;
+    }
+
+    private IReadOnlyList<OverlayTextSegment> BuildSegments(string text)
+    {
+        var segments = new List<OverlayTextSegment>();
+        int index = 0;
+        while (index < text.Length)
+        {
+            int start = index;
+            bool whitespace = char.IsWhiteSpace(text[index]);
+            while (index < text.Length && char.IsWhiteSpace(text[index]) == whitespace)
+            {
+                index++;
+            }
+
+            string token = text[start..index];
+            segments.Add(new OverlayTextSegment(token, PickSegmentColor(token)));
+        }
+
+        return segments;
+    }
+
+    private Color PickSegmentColor(string token)
+    {
+        string normalized = token.Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "CPU" => CpuColor,
+            "GPU" => GpuColor,
+            "FPS" => FpsColor,
+            _ when string.IsNullOrWhiteSpace(token) => ForeColor,
+            _ => ValueColor
+        };
+    }
+
+    private IEnumerable<Point> GetWeightOffsets()
+    {
+        int weight = Math.Clamp(TextWeight, 0, 100);
+
+        yield return Point.Empty;
+
+        if (weight >= 35)
+        {
+            yield return new Point(1, 0);
+        }
+
+        if (weight >= 55)
+        {
+            yield return new Point(0, 1);
+        }
+
+        if (weight >= 75)
+        {
+            yield return new Point(-1, 0);
+        }
+
+        if (weight >= 90)
+        {
+            yield return new Point(0, -1);
+        }
+    }
+
+    private static IEnumerable<Point> OutlineOffsets()
+    {
+        yield return new Point(-1, 0);
+        yield return new Point(1, 0);
+        yield return new Point(0, -1);
+        yield return new Point(0, 1);
+        yield return new Point(-1, -1);
+        yield return new Point(1, -1);
+        yield return new Point(-1, 1);
+        yield return new Point(1, 1);
+    }
+
+    private readonly record struct OverlayTextSegment(string Text, Color Color);
 }
 
 

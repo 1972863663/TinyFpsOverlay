@@ -16,6 +16,8 @@ public sealed class OverlayConfig
     public int HideHotkeyModifiers { get; set; } = 0;
     public bool AutoStartEnabled { get; set; } = false;
     public int TextColorArgb { get; set; } = unchecked((int)0xFFAAFF00); // 小飞机风格荧光绿
+    public int TextWeight { get; set; } = 0;
+    public int TextScale { get; set; } = 100;
 }
 
 public static class OverlayConfigStore
